@@ -1,0 +1,37 @@
+# Compiled Python files
+*.pyc
+
+# Virtual environment
+venv/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Data files
+data/
+
+# Model files
+models/
+
+# Log files
+logs/
+
+# Other generated files
+*.log
+*.csv
+*.h5
+*.pickle
+
+# Editor and IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment configuration files
+.env
+
+# System-specific files
+.DS_Store
+Thumbs.db
+
