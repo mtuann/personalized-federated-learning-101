@@ -5,7 +5,7 @@ This code is based on the setup for Personalized Federated Learning (pFL) from t
 - []()
 
 
-## 1. Environment Preparation
+## Environment Preparation
 
 1. Set up the environment by installing the dependencies from the `environment.yml` file:
 
@@ -15,6 +15,8 @@ make install
 2. Download the data and pretrained models for MNIST, CIFAR-10, and Tiny-ImageNet from the [DBA Github repository](https://github.com/AI-secure/DBA).
 
 
+## Paper
+- [Federated Visual Classification with Real-World Data Distribution](https://arxiv.org/pdf/2003.08082.pdf)
 
 ## Method 🧬
 
