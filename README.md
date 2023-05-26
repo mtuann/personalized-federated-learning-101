@@ -21,7 +21,7 @@ make install
 ### Regular FL Methods
 
 ### Personalized FL Methods
-- ***pFedSim (My Work⭐)*** -- [pFedSim: Similarity-Aware Model Aggregation Towards Personalized Federated Learning](https://arxiv.org/abs/2305.15706) (ArXiv'23)
+- ***pFedSim*** -- [pFedSim: Similarity-Aware Model Aggregation Towards Personalized Federated Learning](https://arxiv.org/abs/2305.15706) (ArXiv'23)
 
 - ***Local-Only*** -- Local training only (without communication).
 
