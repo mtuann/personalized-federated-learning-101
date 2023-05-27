@@ -11,6 +11,37 @@ from utils import init_random_seed, AverageMeter
 from easydict import EasyDict
 from datasets import get_dataset_pfl_cifar10
 from pfl_models import get_model_and_optimizer, get_client_optimizer
+import multiprocessing
+
+
+def valid_test_client(args, client_id, valid_eval_dataloader, global_model, criterion):
+    # import IPython; IPython.embed()
+    # print(f"Start validating client {client_id}")
+    with torch.set_grad_enabled(False):
+        global_model.eval()
+        running_loss, running_acc = AverageMeter(), AverageMeter()
+        total_correct = 0
+        for batch_idx, (data, target) in enumerate(valid_eval_dataloader):
+            data, target = data.to(args.device), target.to(args.device)
+            
+            output = global_model(data)
+            loss = criterion(output, target, )
+            
+            pred = output.argmax(dim=1, keepdim=True)
+            correct_pred = pred.eq(target.view_as(pred))
+            correct = correct_pred.sum().item()
+            total_correct += correct
+            
+            running_loss.update(loss.item()/ data.size(0), data.size(0))
+            running_acc.update(correct / data.size(0), data.size(0))
+            
+        # print(f"Client {client_id} valid loss {running_loss.avg:.4f} acc {running_acc.avg:.4f}")
+        return running_acc.avg
+    
+def process_function(client_id, valid_eval_dl, args, global_model, criterion):
+    torch.cuda.empty_cache()
+    acc = valid_test_client(args, client_id, valid_eval_dl, global_model, criterion)
+    return client_id, acc
 
 def train_client(args, client_id, train_dataloader, client_model, client_weight, criterion):
     
@@ -22,7 +53,6 @@ def train_client(args, client_id, train_dataloader, client_model, client_weight,
     with torch.set_grad_enabled(True):
             
         for epoch in range(args.local_epoch):
-            # print(f"Training client {client_id} epoch {epoch}")
             
             pbar = tqdm.tqdm(enumerate(train_dataloader), total=len(train_dataloader))
             running_loss, running_acc = AverageMeter(), AverageMeter()
@@ -46,34 +76,11 @@ def train_client(args, client_id, train_dataloader, client_model, client_weight,
                 running_loss.update(loss.item()/ data.size(0), data.size(0))
                 running_acc.update(correct / data.size(0), data.size(0))
                 
-                
-                pbar.set_description(
-                    f"Client {client_id} epoch {epoch} loss {running_loss.avg:.4f} acc {running_acc.avg:.4f}"
-                )
-    # pass
+                pbar.set_description(f"Client {client_id} epoch {epoch} loss {running_loss.avg:.4f} acc {running_acc.avg:.4f}")
 
-# def fed_avg_aggregator(args, global_model, client_models, client_weights):
-#     print(f"Aggregating models with FedAvg {client_weights}")
-    
-#     weight_accumulator = {}
-#     for name, params in global_model.state_dict().items():
-#         weight_accumulator[name] = torch.zeros(params.size()).to(device)
-
-#     for net_index, net in enumerate(client_models):
-#         for name, data in net.state_dict().items():
-#             weight_accumulator[name].add_(
-#                 client_weights[net_index] * (data - global_model.state_dict()[name])
-#             )
-            
-#     for name, params in global_model.state_dict().items():
-#         update_per_layer = weight_accumulator[name]
-#         if params.type() != update_per_layer.type():
-#             params.add_(update_per_layer.to(torch.int64))
-#         else:
-#             params.add_(update_per_layer)
 
 def fed_avg_aggregator(args, global_model, client_models, client_weights):
-    print(f"Aggregating models with FedAvg {client_weights}")
+    print(f"Aggregating models with FedAvg: {' '.join([f'{weight:.4f}' for weight in client_weights])}")
     
     weight_accumulator = {name: torch.zeros(params.size()).to(args.device) for name, params in global_model.state_dict().items()}
 
@@ -84,8 +91,29 @@ def fed_avg_aggregator(args, global_model, client_models, client_weights):
     for name, params in global_model.state_dict().items():
         params.add_(weight_accumulator[name].to(params.dtype))
 
+def valid_test_multi_process(args, valid_eval_dataloader, global_model, criterion):
+    # num_processes = len(valid_eval_dataloader)
+    # pool = multiprocessing.Pool(processes=num_processes)
 
-def train_fl(args, train_dataloaders, valid_eval_dataloader, global_model, criterion):
+    # num_processes = len(valid_eval_dataloader)
+    # ctx = multiprocessing.get_context('spawn')
+    # pool = ctx.Pool(processes=num_processes)
+    # results = []
+    val_acc = []
+    for client_id, valid_eval_dl in enumerate(valid_eval_dataloader):
+        acc = valid_test_client(args, client_id, valid_eval_dl, global_model, criterion)
+        val_acc.append(acc)
+        # results.append(result)
+    # for result in results:
+    #     client_id, acc = result.get()
+    #     val_acc[client_id] = acc
+
+    # pool.close()
+    # pool.join()
+
+    return val_acc
+
+def train_fl(args, train_dataloaders, valid_eval_dataloader, test_eval_dataloader, global_model, criterion):
     global_model.to(args.device)
     
     num_rounds = args.comm_round
@@ -111,12 +139,21 @@ def train_fl(args, train_dataloaders, valid_eval_dataloader, global_model, crite
             
         fed_avg_aggregator(args, global_model, client_models, client_weights)
         
-    
+        
+        val_acc = valid_test_multi_process(args, valid_eval_dataloader, global_model, criterion)
+        test_acc = valid_test_multi_process(args, test_eval_dataloader, global_model, criterion)
+
+        print(f"Communication round {com_round_id} valid acc: {' '.join([f'{acc:.3f}' for acc in val_acc])}")
+        print(f"Communication round {com_round_id} test acc: {' '.join([f'{acc:.3f}' for acc in test_acc])}")
+        print("***"*20)
+        
     print("End fl training")
         
 
 
 def run_pfl(json_config):
+    init_random_seed()
+    
     # load config file
     # args = json.load(open(json_config), object_hook=lambda d: SimpleNamespace(**d))
     args_dict = EasyDict(json.load(open(json_config, "r")))
@@ -142,7 +179,7 @@ def run_pfl(json_config):
     
     # n_train_clients, n_valid_clients, n_test_clients = len(train_datasets), len(valid_per_dataset), len(test_per_dataset)
     
-    train_fl(args, train_dataloaders, valid_eval_dataloader, global_model, criterion)
+    train_fl(args, train_dataloaders, valid_eval_dataloader, test_eval_dataloader, global_model, criterion)
     
     # # load optimizerç
     # optimizer = get_optimizer(config, model)
@@ -163,7 +200,7 @@ if __name__ == "__main__":
     # get name of file json from command line
     parser = argparse.ArgumentParser(description="PyTorch CIFAR-10 Example")
     parser.add_argument('--config', type=str, default="./configs/pfl_cifar10_fedavg_052723.json", help='config file')
-    # "/home/henry/learning2/pfl/configs/pfl_cifar10_fedavg_052723.json"
+    # "/home/henry/learning2/ pfl/configs/pfl_cifar10_fedavg_052723.json"
     args = parser.parse_args()
     
-    run_pfl(json_config=args.config)
+    run_pfl(json_config=args.config) # er4fg2m356
