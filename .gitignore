@@ -11,7 +11,7 @@ venv/
 data/
 
 # Model files
-models/
+checkpoints/
 
 # Log files
 logs/

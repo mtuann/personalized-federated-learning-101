@@ -1,24 +1,16 @@
 import os
-import torchvision
-import torchvision.transforms as transforms
 import torch
 import numpy as np
-import random
+import torchvision
+import torchvision.transforms as transforms
+from utils import init_random_seed
 
 
-def split_data_cifar10():
+def split_data_cifar100():
     # https://arxiv.org/pdf/2003.08082.pdf
     pass 
 
 # using pytorch dataset class to load data for federated learning
-
-def init_random_set(random_set=42):
-    torch.manual_seed(random_set)
-    torch.cuda.manual_seed(random_set)
-    np.random.seed(random_set)
-    random.seed(random_set)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
 
 def generate_dataset_clients(label_train_clients, n_clients=100, partition='hetero', partition_alpha=0.1, test_data=True): # hetero/ homo
     # label_train_clients; pair value (label, global_index from dataset)
@@ -96,7 +88,7 @@ def generate_dataset_clients(label_train_clients, n_clients=100, partition='hete
                 
     return net_dataidx_map
 
-def split_data_emnist():
+def get_dataset_pfl_cifar10(args):
     
     # Cross-device case
     # train client, validation client, test client
@@ -104,19 +96,38 @@ def split_data_emnist():
     
     _SHUFFLE_BUFFER_SIZE = 418  # The largest client has at most 418 examples.
     # EMNIST has 3400 clients. We split into 2500/400/500 for train/validation/test.
-    root = "./data"
     TOTAL_CLIENT = 100
-    
+    # EMNIST has 100 clients. We split into 70/10/20 for train/validation/test.
+    # EMNIST has 3400 clients. We split into 2500/400/500 for train/validation/test.
     
     cifar10_transform = transforms.Compose(
         [   transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5 ,0.5)),
         ]
     )
+    transform_train = transforms.Compose(
+            [
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    (0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)
+                ),
+            ]
+        )
+
+    transform_test = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize(
+                (0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)
+            ),
+        ]
+    )
     
     # Load CIFAR10 dataset
-    cifar10_trainset = torchvision.datasets.CIFAR10(root=root, train=True, transform=cifar10_transform, download=True)
-    cifar10_testset = torchvision.datasets.CIFAR10(root=root, train=False, transform=cifar10_transform, download=True)
+    cifar10_trainset = torchvision.datasets.CIFAR10(root="./data", train=True, transform=transform_train, download=True)
+    cifar10_testset = torchvision.datasets.CIFAR10(root="./data", train=False, transform=transform_test, download=True)
     
     # combine train and test dataset
     cifar10_data = torch.utils.data.ConcatDataset([cifar10_trainset, cifar10_testset])
@@ -150,8 +161,9 @@ def split_data_emnist():
     for idx, (_, client) in enumerate(train_data_clients.items()):
         client_dataset = torch.utils.data.Subset(cifar10_data, client)
         train_datasets.append(client_dataset)
-        train_loaders += [torch.utils.data.DataLoader(client_dataset, batch_size=64, shuffle=True, num_workers=2)]
+        train_loaders += [torch.utils.data.DataLoader(client_dataset, batch_size=64, shuffle=True, num_workers=8)]
         print(f"Train Client number: {idx} has {len(client_dataset)} samples")
+        
     per_val_datasets, per_val_loaders = [], [] # validation client
     eval_test_datasets, eval_test_loaders = [], [] # test client
     
@@ -180,11 +192,11 @@ def split_data_emnist():
             
             per_dataset = torch.utils.data.Subset(cifar10_data, per_dataset_index)
             valid_per_dataset.append(per_dataset)
-            valid_per_dataloader += [torch.utils.data.DataLoader(per_dataset, batch_size=64, shuffle=True, num_workers=2)]
+            valid_per_dataloader += [torch.utils.data.DataLoader(per_dataset, batch_size=64, shuffle=True, num_workers=8)]
 
             eval_dataset = torch.utils.data.Subset(cifar10_data, eval_dataset_index)
             valid_eval_dataset.append(eval_dataset)
-            valid_eval_dataloader += [torch.utils.data.DataLoader(eval_dataset, batch_size=64, shuffle=True, num_workers=2)]
+            valid_eval_dataloader += [torch.utils.data.DataLoader(eval_dataset, batch_size=64, shuffle=True, num_workers=8)]
             
             total_valid_test["valid_eval"] += len(eval_dataset)
             total_valid_test["valid_per"] += len(per_dataset)
@@ -198,10 +210,11 @@ def split_data_emnist():
 
             per_dataset = torch.utils.data.Subset(cifar10_data, per_dataset_index)
             test_per_dataset.append(per_dataset)
-            test_per_dataloader += [torch.utils.data.DataLoader(per_dataset, batch_size=64, shuffle=True, num_workers=2)]
+            test_per_dataloader += [torch.utils.data.DataLoader(per_dataset, batch_size=64, shuffle=True, num_workers=8)]
             
             eval_dataset = torch.utils.data.Subset(cifar10_data, eval_dataset_index)
             test_eval_dataset.append(eval_dataset)
+            test_eval_dataloader += [torch.utils.data.DataLoader(eval_dataset, batch_size=64, shuffle=True, num_workers=8)]
             total_valid_test["test_per"] += len(per_dataset)
             total_valid_test["test_eval"] += len(eval_dataset)
             print(f"Test client : {_NUM_TRAIN_CLIENTS + idx} has per: {len(per_dataset)} samples, eval: {len(eval_dataset)} samples")
@@ -209,6 +222,7 @@ def split_data_emnist():
     print(len(valid_per_dataset), len(valid_eval_dataset), len(test_per_dataset), len(test_eval_dataset) )
     print(total_valid_test)
     
+    return train_datasets, train_loaders, valid_per_dataset, valid_eval_dataset, test_per_dataset, test_eval_dataset, valid_per_dataloader, valid_eval_dataloader, test_per_dataloader, test_eval_dataloader
     
     # import IPython
     # IPython.embed()
@@ -297,5 +311,5 @@ def split_data_emnist():
     # cifar10_testloader = torch.utils.data.DataLoader(cifar10_testset, batch_size=32, shuffle=False)
 
 if __name__ == "__main__":
-    init_random_set()
+    init_random_seed()
     split_data_emnist()

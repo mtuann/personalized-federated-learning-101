@@ -13,7 +13,7 @@ install-mac:
 	${CONDAPATH}/envs/$(ENV_NAME)/bin/pip install -r requirements.txt
 
 update:
-	conda env update --prune -f environment.yml
+	# conda env update --prune -f environment.yml
 	${CONDAPATH}/envs/$(ENV_NAME)/bin/pip install -r requirements.txt --upgrade
 
 clean:
