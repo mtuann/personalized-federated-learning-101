@@ -38,7 +38,7 @@
       "client_num_per_round": 5,
       
 
-      "comm_round": 1000,
+      "comm_round": 2,
       "local_epoch": 2,
       "mu": 0,
       "client_optimizer": "sgd",

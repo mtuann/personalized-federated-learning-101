@@ -157,12 +157,14 @@ def get_dataset_pfl_cifar10(args):
     train_data_clients = generate_dataset_clients(label_train_clients, n_clients=_NUM_TRAIN_CLIENTS, partition='hetero', partition_alpha=0.5, test_data=False)
     val_test_clients = generate_dataset_clients(label_val_test_clients, n_clients=_NUM_VALID_CLIENTS + _NUM_TEST_CLIENTS, partition='hetero', partition_alpha=0.5, test_data=True)
 
+    logger = args.logger
+    
     train_datasets, train_loaders = [], []
     for idx, (_, client) in enumerate(train_data_clients.items()):
         client_dataset = torch.utils.data.Subset(cifar10_data, client)
         train_datasets.append(client_dataset)
         train_loaders += [torch.utils.data.DataLoader(client_dataset, batch_size=64, shuffle=True, num_workers=8)]
-        print(f"Train Client number: {idx} has {len(client_dataset)} samples")
+        logger.log(f"Train client number: {idx} has {len(client_dataset)} samples")
         
     per_val_datasets, per_val_loaders = [], [] # validation client
     eval_test_datasets, eval_test_loaders = [], [] # test client
@@ -173,8 +175,12 @@ def get_dataset_pfl_cifar10(args):
     valid_per_dataloader, valid_eval_dataloader = [], []
     test_per_dataloader, test_eval_dataloader = [], []
     
+    clients_type = {id: "Train" for id in range(_NUM_TRAIN_CLIENTS)}
+    
     
     val_client_id = np.random.choice(len(val_test_clients), _NUM_VALID_CLIENTS, replace=False)
+    # clients_type.update({id: "Validation" for id in val_client_id})
+    
     total_valid_test = {
         "valid_per": 0,
         "valid_eval" : 0,
@@ -183,8 +189,11 @@ def get_dataset_pfl_cifar10(args):
     }
     
     
+    
     for idx, (_, client_data_idx) in enumerate(val_test_clients.items()):
         if idx in val_client_id:
+            
+            clients_type.update({_NUM_TRAIN_CLIENTS + idx: "Validation"})
             
             # get list of value < 50000 from client_data_idx
             per_dataset_index = [i for i in client_data_idx if i < 50000]
@@ -200,9 +209,10 @@ def get_dataset_pfl_cifar10(args):
             
             total_valid_test["valid_eval"] += len(eval_dataset)
             total_valid_test["valid_per"] += len(per_dataset)
-            print(f"Validation client : {_NUM_TRAIN_CLIENTS + idx} has per: {len(per_dataset)} samples, eval: {len(eval_dataset)} samples")
+            logger.log(f"Validation client : {_NUM_TRAIN_CLIENTS + idx} has per: {len(per_dataset)} samples, eval: {len(eval_dataset)} samples")
                 
         else:
+            clients_type.update({_NUM_TRAIN_CLIENTS + idx: "Test"})
             
             # get list of value < 50000 from client_data_idx
             per_dataset_index = [i for i in client_data_idx if i < 50000]
@@ -217,12 +227,12 @@ def get_dataset_pfl_cifar10(args):
             test_eval_dataloader += [torch.utils.data.DataLoader(eval_dataset, batch_size=64, shuffle=True, num_workers=8)]
             total_valid_test["test_per"] += len(per_dataset)
             total_valid_test["test_eval"] += len(eval_dataset)
-            print(f"Test client : {_NUM_TRAIN_CLIENTS + idx} has per: {len(per_dataset)} samples, eval: {len(eval_dataset)} samples")
+            logger.log(f"Test client : {_NUM_TRAIN_CLIENTS + idx} has per: {len(per_dataset)} samples, eval: {len(eval_dataset)} samples")
             
-    print(len(valid_per_dataset), len(valid_eval_dataset), len(test_per_dataset), len(test_eval_dataset) )
-    print(total_valid_test)
+    logger.log(len(valid_per_dataset), len(valid_eval_dataset), len(test_per_dataset), len(test_eval_dataset) )
+    logger.log(total_valid_test)
     
-    return train_datasets, train_loaders, valid_per_dataset, valid_eval_dataset, test_per_dataset, test_eval_dataset, valid_per_dataloader, valid_eval_dataloader, test_per_dataloader, test_eval_dataloader
+    return clients_type, train_datasets, train_loaders, valid_per_dataset, valid_eval_dataset, test_per_dataset, test_eval_dataset, valid_per_dataloader, valid_eval_dataloader, test_per_dataloader, test_eval_dataloader
     
     # import IPython
     # IPython.embed()
